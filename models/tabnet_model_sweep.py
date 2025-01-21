@@ -12,7 +12,7 @@ import torch
 from torchmetrics.classification import AUROC
 
 from pytorch_tabular import TabularModel, model_sweep
-from pytorch_tabular.models import TabNetModelConfig, CategoryEmbeddingModelConfig, GANDALFConfig, FTTransformerConfig
+from pytorch_tabular.models import TabNetModelConfig, CategoryEmbeddingModelConfig, GANDALFConfig, FTTransformerConfig, AutoIntConfig, DANetConfig, GatedAdditiveTreeEnsembleConfig, NodeConfig, TabTransformerConfig
 from pytorch_tabular.config import DataConfig, OptimizerConfig, TrainerConfig
 from pytorch_tabular.models.common.heads import LinearHeadConfig
 
@@ -83,7 +83,63 @@ def run_model_sweep_experiment(data_path):
         initialization="kaiming",
     ).__dict__
 
-    # Run model sweep with standard preset
+    # Run model sweep with custom model list
+    model_list = [
+        AutoIntConfig(
+            task="classification",
+            head="LinearHead",
+            head_config=head_config
+        ),
+        CategoryEmbeddingModelConfig(
+            task="classification",
+            layers="256-128-64",
+            head="LinearHead",
+            head_config=head_config
+        ),
+        DANetConfig(
+            task="classification",
+            head="LinearHead",
+            head_config=head_config
+        ),
+        FTTransformerConfig(
+            task="classification",
+            head="LinearHead",
+            head_config=head_config
+        ),
+        GANDALFConfig(
+            task="classification",
+            gflu_stages=6,
+            head="LinearHead",
+            head_config=head_config
+        ),
+        GatedAdditiveTreeEnsembleConfig(
+            task="classification",
+            head="LinearHead",
+            head_config=head_config
+        ),
+        NodeConfig(
+            task="classification",
+            head="LinearHead",
+            head_config=head_config
+        ),
+        TabNetModelConfig(
+            task="classification",
+            n_d=32,
+            n_a=32,
+            n_steps=3,
+            gamma=1.5,
+            n_independent=1,
+            n_shared=2,
+            head="LinearHead",
+            head_config=head_config
+        ),
+        TabTransformerConfig(
+            task="classification",
+            head="LinearHead",
+            head_config=head_config
+        )
+    ]
+
     sweep_df, best_model = model_sweep(
         task="classification",
         train=train_df,
@@ -91,14 +147,15 @@ def run_model_sweep_experiment(data_path):
         data_config=data_config,
         optimizer_config=optimizer_config,
         trainer_config=trainer_config,
-        model_list="standard",
+        model_list=model_list,
         common_model_args=dict(head="LinearHead", head_config=head_config),
         metrics=["accuracy", "f1_score"],
         metrics_params=[{}, {"average": "macro"}],
         metrics_prob_input=[False, True],
         rank_metric=("accuracy", "higher_is_better"),
         progress_bar=True,
-        verbose=True
+        verbose=True,
+        ignore_oom=True
     )
 
     # Save sweep results
@@ -118,7 +175,8 @@ def run_model_sweep_experiment(data_path):
         if "(OOM)" in model_name:  # Skip OOM models
             continue
             
-        # Get the model configuration
+        # Get the model configuration based on model name
+        model_config = None
         if model_name == "CategoryEmbeddingModel":
             model_config = CategoryEmbeddingModelConfig(
                 task="classification",
@@ -148,6 +206,40 @@ def run_model_sweep_experiment(data_path):
                 head="LinearHead",
                 head_config=head_config,
             )
+        elif model_name == "AutoIntModel":
+            model_config = AutoIntConfig(
+                task="classification",
+                head="LinearHead",
+                head_config=head_config,
+            )
+        elif model_name == "DANetModel":
+            model_config = DANetConfig(
+                task="classification",
+                head="LinearHead",
+                head_config=head_config,
+            )
+        elif model_name == "GatedAdditiveTreeEnsembleModel":
+            model_config = GatedAdditiveTreeEnsembleConfig(
+                task="classification",
+                head="LinearHead",
+                head_config=head_config,
+            )
+        elif model_name == "NodeModel":
+            model_config = NodeConfig(
+                task="classification",
+                head="LinearHead",
+                head_config=head_config,
+            )
+        elif model_name == "TabTransformerModel":
+            model_config = TabTransformerConfig(
+                task="classification",
+                head="LinearHead",
+                head_config=head_config,
+            )
+            
+        if model_config is None:
+            print(f"Skipping unknown model: {model_name}")
+            continue
         
         # Train model
         model = TabularModel(
@@ -157,32 +249,37 @@ def run_model_sweep_experiment(data_path):
             trainer_config=trainer_config,
         )
         
-        model.fit(train=train_df, validation=test_df)
-        
-        # Get predictions
-        pred_df = model.predict(test_df)
-        y_pred_proba = pred_df['target_1_probability'].values
-        y_pred = pred_df['target_prediction'].values
-        
-        # Calculate metrics
-        sk_accuracy = accuracy_score(y_test, y_pred)
-        sk_f1 = f1_score(y_test, y_pred, average='macro')
-        sk_auc = roc_auc_score(y_test, y_pred_proba)
-        
-        # Store AUC value
-        auc_values[model_name] = sk_auc
-        
-        results_list.append({
-            'Model': model_name,
-            'Accuracy': sk_accuracy,
-            'F1-Score': sk_f1,
-            'AUC-ROC': sk_auc
-        })
-        
-        print(f"\n{model_name}:")
-        print(f"Accuracy: {sk_accuracy:.4f}")
-        print(f"F1-Score: {sk_f1:.4f}")
-        print(f"AUC-ROC: {sk_auc:.4f}")
+        try:
+            model.fit(train=train_df, validation=test_df)
+            
+            # Get predictions
+            pred_df = model.predict(test_df)
+            y_pred_proba = pred_df['target_1_probability'].values
+            y_pred = pred_df['target_prediction'].values
+            
+            # Calculate metrics
+            sk_accuracy = accuracy_score(y_test, y_pred)
+            sk_f1 = f1_score(y_test, y_pred, average='macro')
+            sk_auc = roc_auc_score(y_test, y_pred_proba)
+            
+            # Store AUC value
+            auc_values[model_name] = sk_auc
+            
+            results_list.append({
+                'Model': model_name,
+                'Accuracy': sk_accuracy,
+                'F1-Score': sk_f1,
+                'AUC-ROC': sk_auc
+            })
+            
+            print(f"\n{model_name}:")
+            print(f"Accuracy: {sk_accuracy:.4f}")
+            print(f"F1-Score: {sk_f1:.4f}")
+            print(f"AUC-ROC: {sk_auc:.4f}")
+            
+        except Exception as e:
+            print(f"\nError training {model_name}: {str(e)}")
+            continue
     
     # Add AUC values to sweep_df
     sweep_df['test_auroc'] = sweep_df['model'].map(auc_values)
