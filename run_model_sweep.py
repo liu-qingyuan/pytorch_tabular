@@ -9,7 +9,6 @@ if __name__ == "__main__":
     print(f"Model: {best_acc_model['model']}")
     print(f"Model Parameters: {best_acc_model['# Params']}")
     print(f"Test Accuracy: {best_acc_model['test_accuracy']:.4f}")
-    print(f"Test F1 Score: {best_acc_model['test_f1_score']:.4f}")
     print(f"Test AUROC: {best_acc_model['test_auroc']:.4f}")
     print(f"Time per epoch: {best_acc_model['time_taken_per_epoch']:.4f} seconds")
     
@@ -18,7 +17,6 @@ if __name__ == "__main__":
     print(f"Model: {best_auc_model['model']}")
     print(f"Model Parameters: {best_auc_model['# Params']}")
     print(f"Test Accuracy: {best_auc_model['test_accuracy']:.4f}")
-    print(f"Test F1 Score: {best_auc_model['test_f1_score']:.4f}")
     print(f"Test AUROC: {best_auc_model['test_auroc']:.4f}")
     print(f"Time per epoch: {best_auc_model['time_taken_per_epoch']:.4f} seconds")
     

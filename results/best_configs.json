@@ -1,0 +1,99 @@
+{
+    "DANetModel": {
+        "params": {
+            "optimizer_config__optimizer_params": {
+                "weight_decay": 0.001
+            },
+            "optimizer_config__optimizer": "Adam",
+            "model_config__virtual_batch_size": 128,
+            "model_config__n_layers": 8,
+            "model_config__k": 7,
+            "model_config__dropout_rate": 0.1,
+            "model_config__block_activation": "LeakyReLU",
+            "model_config__abstlay_dim_2": 128,
+            "model_config__abstlay_dim_1": 16
+        },
+        "performance": {
+            "auc": 0.8521302938461304,
+            "accuracy": 0.7288135886192322
+        }
+    },
+    "TabTransformerModel": {
+        "params": {
+            "optimizer_config__optimizer_params": {
+                "weight_decay": 0.01
+            },
+            "optimizer_config__optimizer": "AdamW",
+            "model_config__transformer_head_dim": NaN,
+            "model_config__transformer_activation": "ReGLU",
+            "model_config__shared_embedding_fraction": 0.25,
+            "model_config__share_embedding_strategy": "fraction",
+            "model_config__share_embedding": false,
+            "model_config__num_heads": 16,
+            "model_config__num_attn_blocks": 4,
+            "model_config__input_embed_dim": 32,
+            "model_config__ff_hidden_multiplier": 8,
+            "model_config__ff_dropout": 0.0,
+            "model_config__embedding_initialization": "kaiming_normal",
+            "model_config__embedding_dropout": 0.2,
+            "model_config__embedding_bias": true,
+            "model_config__attn_dropout": 0.0,
+            "model_config__add_norm_dropout": 0.0
+        },
+        "performance": {
+            "auc": 0.8421052694320679,
+            "accuracy": 0.7288135886192322
+        }
+    },
+    "AutoIntModel": {
+        "params": {
+            "optimizer_config__optimizer_params": {
+                "weight_decay": 0.001
+            },
+            "optimizer_config__optimizer": "AdamW",
+            "model_config__use_batch_norm": true,
+            "model_config__shared_embedding_fraction": 0.25,
+            "model_config__share_embedding_strategy": "add",
+            "model_config__share_embedding": true,
+            "model_config__num_heads": 4,
+            "model_config__num_attn_blocks": 3,
+            "model_config__initialization": "kaiming",
+            "model_config__has_residuals": true,
+            "model_config__embedding_initialization": "kaiming_uniform",
+            "model_config__embedding_dim": 32,
+            "model_config__embedding_bias": true,
+            "model_config__dropout": 0.0,
+            "model_config__deep_layers": false,
+            "model_config__attn_embed_dim": 32,
+            "model_config__attn_dropouts": 0.2,
+            "model_config__attention_pooling": false,
+            "model_config__activation": "ReLU"
+        },
+        "performance": {
+            "auc": 0.8170425891876221,
+            "accuracy": 0.7796609997749329
+        }
+    },
+    "TabNetModel": {
+        "params": {
+            "optimizer_config__optimizer_params": {
+                "weight_decay": 0.01
+            },
+            "optimizer_config__optimizer": "Adam",
+            "model_config__virtual_batch_size": 128,
+            "model_config__n_steps": 3,
+            "model_config__n_shared": 2,
+            "model_config__n_independent": 3,
+            "model_config__n_d": 8,
+            "model_config__n_a": 64,
+            "model_config__mask_type": "sparsemax",
+            "model_config__gamma": 1.5,
+            "model_config__embedding_dropout": 0.2,
+            "model_config__batch_norm_continuous_input": true
+        },
+        "performance": {
+            "auc": 0.800751805305481,
+            "accuracy": 0.7118644118309021
+        }
+    }
+}
