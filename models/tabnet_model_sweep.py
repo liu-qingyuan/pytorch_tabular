@@ -15,6 +15,7 @@ from pytorch_tabular import TabularModel, model_sweep
 from pytorch_tabular.models import TabNetModelConfig, CategoryEmbeddingModelConfig, GANDALFConfig, FTTransformerConfig, AutoIntConfig, DANetConfig, GatedAdditiveTreeEnsembleConfig, NodeConfig, TabTransformerConfig
 from pytorch_tabular.config import DataConfig, OptimizerConfig, TrainerConfig
 from pytorch_tabular.models.common.heads import LinearHeadConfig
+from pytorch_tabular.tabular_model_tuner import TabularModelTuner
 
 def set_seed(seed=42):
     """Set all random seeds for reproducibility"""
@@ -88,55 +89,16 @@ def run_model_sweep_experiment(data_path):
         AutoIntConfig(
             task="classification",
             head="LinearHead",
-            head_config=head_config
-        ),
-        CategoryEmbeddingModelConfig(
-            task="classification",
-            layers="256-128-64",
-            head="LinearHead",
-            head_config=head_config
-        ),
-        DANetConfig(
-            task="classification",
-            head="LinearHead",
-            head_config=head_config
-        ),
-        FTTransformerConfig(
-            task="classification",
-            head="LinearHead",
-            head_config=head_config
-        ),
-        GANDALFConfig(
-            task="classification",
-            gflu_stages=6,
-            head="LinearHead",
-            head_config=head_config
-        ),
-        GatedAdditiveTreeEnsembleConfig(
-            task="classification",
-            head="LinearHead",
-            head_config=head_config
-        ),
-        NodeConfig(
-            task="classification",
-            head="LinearHead",
-            head_config=head_config
-        ),
-        TabNetModelConfig(
-            task="classification",
-            n_d=32,
-            n_a=32,
-            n_steps=3,
-            gamma=1.5,
-            n_independent=1,
-            n_shared=2,
-            head="LinearHead",
-            head_config=head_config
-        ),
-        TabTransformerConfig(
-            task="classification",
-            head="LinearHead",
-            head_config=head_config
+            head_config=head_config,
+            metrics=["accuracy", "auroc"],
+            metrics_params=[{}, {}],
+            metrics_prob_input=[False, True],
+            attn_embed_dim=32,
+            num_heads=2,
+            num_attn_blocks=3,
+            attn_dropouts=0.0,
+            has_residuals=True,
+            embedding_dim=16
         )
     ]
 
@@ -148,149 +110,80 @@ def run_model_sweep_experiment(data_path):
         optimizer_config=optimizer_config,
         trainer_config=trainer_config,
         model_list=model_list,
-        common_model_args=dict(head="LinearHead", head_config=head_config),
-        metrics=["accuracy", "f1_score"],
-        metrics_params=[{}, {"average": "macro"}],
+        metrics=["accuracy", "auroc"],
+        metrics_params=[{}, {}],
         metrics_prob_input=[False, True],
-        rank_metric=("accuracy", "higher_is_better"),
+        rank_metric=("auroc", "higher_is_better"),
         progress_bar=True,
-        verbose=True,
-        ignore_oom=True
+        verbose=True
     )
 
     # Save sweep results
     sweep_df.to_csv('results/model_sweep_results.csv', index=False)
     
     print("\nModel Sweep Results:")
-    print(sweep_df[['model', '# Params', 'test_accuracy', 'test_f1_score', 'time_taken_per_epoch']])
+    print(sweep_df[['model', '# Params', 'test_accuracy', 'test_auroc', 'time_taken_per_epoch']])
 
-    # Calculate metrics using scikit-learn for all models
-    print("\nModel Performance with scikit-learn metrics:")
-    results_list = []
+    # 选择性能最好的模型进行参数调优
+    top_models = sweep_df[sweep_df['model'] == 'AutoIntModel'].copy()
     
-    # Create a dictionary to store AUC values
-    auc_values = {}
+    # 为AutoInt模型定义搜索空间
+    search_spaces = [{
+        "optimizer_config__optimizer": ["Adam", "SGD"],
+        "model_config__attn_embed_dim": [32, 64],
+        "model_config__num_heads": [2, 4, 8],
+        "model_config__num_attn_blocks": [2, 3, 4],
+        "model_config__attn_dropouts": [0.0, 0.1, 0.2],
+        "model_config__has_residuals": [True, False],
+        "model_config__embedding_dim": [16, 32]
+    }]
+
+    model_configs = [AutoIntConfig(
+        task="classification",
+        head="LinearHead",
+        head_config=head_config,
+        metrics=["accuracy", "auroc"],
+        metrics_params=[{}, {}],
+        metrics_prob_input=[False, True],
+        attn_embed_dim=32,
+        num_heads=2,
+        num_attn_blocks=3,
+        attn_dropouts=0.0,
+        has_residuals=True,
+        embedding_dim=16
+    )]
+
+    print(f"\nStarting Hyperparameter Tuning for AutoInt model...")
     
-    for model_name in sweep_df['model'].unique():
-        if "(OOM)" in model_name:  # Skip OOM models
-            continue
-            
-        # Get the model configuration based on model name
-        model_config = None
-        if model_name == "CategoryEmbeddingModel":
-            model_config = CategoryEmbeddingModelConfig(
-                task="classification",
-                layers="256-128-64",
-                head="LinearHead",
-                head_config=head_config,
-            )
-        elif model_name == "GANDALFModel":
-            model_config = GANDALFConfig(
-                task="classification",
-                gflu_stages=6,
-                head="LinearHead",
-                head_config=head_config,
-            )
-        elif model_name == "TabNetModel":
-            model_config = TabNetModelConfig(
-                task="classification",
-                n_d=32,
-                n_a=32,
-                n_steps=3,
-                head="LinearHead",
-                head_config=head_config,
-            )
-        elif model_name == "FTTransformerModel":
-            model_config = FTTransformerConfig(
-                task="classification",
-                head="LinearHead",
-                head_config=head_config,
-            )
-        elif model_name == "AutoIntModel":
-            model_config = AutoIntConfig(
-                task="classification",
-                head="LinearHead",
-                head_config=head_config,
-            )
-        elif model_name == "DANetModel":
-            model_config = DANetConfig(
-                task="classification",
-                head="LinearHead",
-                head_config=head_config,
-            )
-        elif model_name == "GatedAdditiveTreeEnsembleModel":
-            model_config = GatedAdditiveTreeEnsembleConfig(
-                task="classification",
-                head="LinearHead",
-                head_config=head_config,
-            )
-        elif model_name == "NodeModel":
-            model_config = NodeConfig(
-                task="classification",
-                head="LinearHead",
-                head_config=head_config,
-            )
-        elif model_name == "TabTransformerModel":
-            model_config = TabTransformerConfig(
-                task="classification",
-                head="LinearHead",
-                head_config=head_config,
-            )
-            
-        if model_config is None:
-            print(f"Skipping unknown model: {model_name}")
-            continue
-        
-        # Train model
-        model = TabularModel(
-            data_config=data_config,
-            model_config=model_config,
-            optimizer_config=optimizer_config,
-            trainer_config=trainer_config,
-        )
-        
-        try:
-            model.fit(train=train_df, validation=test_df)
-            
-            # Get predictions
-            pred_df = model.predict(test_df)
-            y_pred_proba = pred_df['target_1_probability'].values
-            y_pred = pred_df['target_prediction'].values
-            
-            # Calculate metrics
-            sk_accuracy = accuracy_score(y_test, y_pred)
-            sk_f1 = f1_score(y_test, y_pred, average='macro')
-            sk_auc = roc_auc_score(y_test, y_pred_proba)
-            
-            # Store AUC value
-            auc_values[model_name] = sk_auc
-            
-            results_list.append({
-                'Model': model_name,
-                'Accuracy': sk_accuracy,
-                'F1-Score': sk_f1,
-                'AUC-ROC': sk_auc
-            })
-            
-            print(f"\n{model_name}:")
-            print(f"Accuracy: {sk_accuracy:.4f}")
-            print(f"F1-Score: {sk_f1:.4f}")
-            print(f"AUC-ROC: {sk_auc:.4f}")
-            
-        except Exception as e:
-            print(f"\nError training {model_name}: {str(e)}")
-            continue
+    tuner = TabularModelTuner(
+        data_config=data_config,
+        model_config=model_configs[0],  # 只使用一个模型配置
+        optimizer_config=optimizer_config,
+        trainer_config=trainer_config
+    )
+
+    tuner_df = tuner.tune(
+        train=train_df,
+        validation=test_df,
+        search_space=search_spaces[0],  # 只使用一个搜索空间
+        strategy="random_search",
+        n_trials=10,
+        metric="auroc",
+        mode="max",
+        progress_bar=True,
+        verbose=True
+    )
+
+    # Save tuning results
+    tuner_df.trials_df.to_csv('results/hyperparameter_tuning_results.csv', index=False)
     
-    # Add AUC values to sweep_df
-    sweep_df['test_auroc'] = sweep_df['model'].map(auc_values)
+    print("\nTop 3 configurations by AUC:")
+    print(tuner_df.trials_df.sort_values("auroc", ascending=False).head(3))
     
-    # Create and save detailed results
-    detailed_results = pd.DataFrame(results_list)
-    detailed_results.to_csv('results/detailed_model_metrics.csv', index=False)
-    print("\nDetailed results saved to 'results/detailed_model_metrics.csv'")
+    print("\nTop 3 configurations by Accuracy:")
+    print(tuner_df.trials_df.sort_values("accuracy", ascending=False).head(3))
     
-    # Print final results including AUC
-    print("\nFinal Model Sweep Results:")
-    print(sweep_df[['model', '# Params', 'test_accuracy', 'test_f1_score', 'test_auroc', 'time_taken_per_epoch']])
+    # Save the best model
+    tuner_df.best_model.save_model("best_model", inference_only=True)
     
-    return sweep_df, best_model 
+    return sweep_df, tuner_df.best_model 
