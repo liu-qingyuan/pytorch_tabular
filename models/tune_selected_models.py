@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 import os
 import torch
 import json
+import joblib
 
 from pytorch_tabular import TabularModel
 from pytorch_tabular.models import (
@@ -46,14 +47,23 @@ def tune_selected_models(data_path):
 
     # 标准化特征
     scaler = StandardScaler()
-    X = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)
+    X = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)    
+    # Save the scaler
+    joblib.dump(scaler, "results/scaler.pkl")
+    print("✅ Saved scaler to results/scaler.pkl")
 
-    # Split data
+    # Split data into train and test sets (80/20)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    
+    # 准备训练集和测试集
     train_df = X_train.copy()
     train_df['target'] = y_train
     test_df = X_test.copy()
     test_df['target'] = y_test
+    
+    # Save test set
+    test_df.to_csv("results/test_set.csv", index=False)
+    print("✅ Saved test set to results/test_set.csv")
 
     print("\nData Shape:", X.shape)
     print("Label Distribution:\n", y.value_counts())
@@ -274,7 +284,7 @@ def tune_selected_models(data_path):
     
     all_tuning_results = []
     best_models = {}
-    summary_results = []  # 初始化汇总结果列表
+    summary_results = []
     
     # 按顺序调优每个模型
     model_names = ["DANetModel", "TabTransformerModel", "AutoIntModel", "TabNetModel"]
@@ -291,37 +301,39 @@ def tune_selected_models(data_path):
 
         tuner_df = tuner.tune(
             train=train_df,
-            validation=test_df,
+            validation=test_df,  # 使用测试集作为验证集
             search_space=search_space,
             strategy="random_search",
-            n_trials=300,  # 每个模型300次尝试
-            metric="auroc",
+            n_trials=2,  # 每个模型2次尝试
+            metric="auroc",  # 使用auroc作为主要优化指标
             mode="max",
             progress_bar=True,
-            verbose=True
+            verbose=True,
+            return_best_model=True  # 确保返回最佳模型
         )
         
         # 保存每个模型的调优结果
         tuner_df.trials_df['model'] = model_name
         all_tuning_results.append(tuner_df.trials_df)
-        best_models[model_name] = tuner_df.best_model
+        
+        if tuner_df.best_model is not None:
+            best_models[model_name] = tuner_df.best_model
+            # 保存最佳模型
+            model_save_path = f"results/{model_name}_best.pt"
+            tuner_df.best_model.save_model(model_save_path)
+            print(f"✅ Saved best model to {model_save_path}")
         
         # 获取最佳结果
         best_trial = tuner_df.trials_df.sort_values("auroc", ascending=False).iloc[0]
-        best_auc = best_trial["auroc"]
-        best_acc = best_trial["accuracy"]
         
-        # 添加到汇总结果
-        summary_results.append({
-            "model_name": model_name,
-            "best_auroc": best_auc,
-            "accuracy_at_best_auroc": best_acc,
-            "best_accuracy": best_acc,
-            "auroc_at_best_accuracy": best_auc
-        })
+        # 获取最佳性能指标
+        best_auc = best_trial["auroc"]
+        best_acc = best_trial.get("accuracy", None)  # 尝试获取accuracy
         
         print(f"\nResults for {model_name}:")
-        print(f"Best AUC: {best_auc:.4f} (Accuracy: {best_acc:.4f})")
+        print(f"Best AUC: {best_auc:.4f}")
+        if best_acc is not None:
+            print(f"Accuracy at best AUC: {best_acc:.4f}")
         
         print("\nTop 3 configurations by AUC:")
         print(tuner_df.trials_df.sort_values("auroc", ascending=False).head(3))
@@ -348,33 +360,49 @@ def tune_selected_models(data_path):
                 'params': params_dict,
                 'performance': {
                     'auc': float(best_auc),
-                    'accuracy': float(best_acc)
+                    'accuracy': float(best_acc) if best_acc is not None else 0.0,
+                    'timestamp': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
                 }
             }
-            print(f"\nNew best configuration found for {model_name}!")
+            print(f"\n🏆 New best configuration found for {model_name}!")
+        
+        # 添加到汇总结果
+        summary_results.append({
+            "model_name": model_name,
+            "best_auroc": best_auc,
+            "accuracy_at_best_auroc": best_acc if best_acc is not None else 0.0,
+            "historical_best_auroc": historical_best[model_name]['performance']['auc'],
+            "historical_best_accuracy": historical_best[model_name]['performance']['accuracy'],
+            "historical_best_timestamp": historical_best[model_name]['performance'].get('timestamp', 'N/A')
+        })
     
     # 合并所有调优结果
     combined_tuning_df = pd.concat(all_tuning_results, ignore_index=True)
-    combined_tuning_df.to_csv('results/hyperparameter_tuning_results.csv', index=False)
+    combined_tuning_df.to_csv('results/all_trials.csv', index=False)
+    print("✅ Saved all trials to results/all_trials.csv")
     
     # 保存历史最佳配置
     with open(best_configs_file, 'w') as f:
         json.dump(historical_best, f, indent=4)
+    print("✅ Saved historical best configurations to results/best_configs.json")
     
     # 创建汇总DataFrame
     summary_df = pd.DataFrame(summary_results)
-    summary_df.to_csv('results/model_summary.csv', index=False)
+    summary_df.to_csv('results/summary.csv', index=False)
+    print("✅ Saved summary to results/summary.csv")
     
     # 打印汇总结果
     print("\nModel Performance Summary:")
     print("=" * 80)
-    for result in summary_results:
-        print(f"\nModel: {result['model_name']}")
-        print(f"Best AUROC: {result['best_auroc']:.4f} (Accuracy: {result['accuracy_at_best_auroc']:.4f})")
+    for _, row in summary_df.iterrows():
+        print(f"\nModel: {row['model_name']}")
+        print(f"Current Best AUROC: {row['best_auroc']:.4f} (Accuracy: {row['accuracy_at_best_auroc']:.4f})")
+        print(f"Historical Best AUROC: {row['historical_best_auroc']:.4f} (Accuracy: {row['historical_best_accuracy']:.4f})")
+        print(f"Historical Best Achieved: {row['historical_best_timestamp']}")
     print("=" * 80)
     
-    return combined_tuning_df, summary_df
+    return combined_tuning_df, summary_df, best_models, historical_best
 
 if __name__ == "__main__":
-    data_path = "data/AI4healthcare.xlsx"  # 修改为正确的数据路径
-    tuner_df, summary_df = tune_selected_models(data_path) 
+    data_path = "data/AI4healthcare.xlsx"
+    tuner_df, summary_df, best_models, historical_best = tune_selected_models(data_path) 
