@@ -6,6 +6,7 @@ import joblib
 import os
 from sklearn.model_selection import StratifiedKFold
 import torch
+import json
 
 def set_seed(seed=42):
     """Set all random seeds for reproducibility"""
@@ -259,12 +260,12 @@ def calculate_metrics(y_true, y_pred_proba, model):
         metrics = get_metrics_from_result(metrics_result)
         
         # 从metrics字典中获取结果
-        return metrics['test_auroc'], metrics['test_accuracy']
+        return metrics['test_auroc'], metrics['test_accuracy'], metrics.get('test_loss', None)
     except Exception as e:
         print(f"❌ 指标计算失败: {str(e)}")
         print(f"y_true 类型: {type(y_true)}, 形状: {getattr(y_true, 'shape', 'unknown')}")
         print(f"y_pred_proba 类型: {type(y_pred_proba)}, 形状: {getattr(y_pred_proba, 'shape', 'unknown')}")
-        return None, None
+        return None, None, None
 
 def verify_performance(model_name, data_path="data/AI4healthcare.xlsx"):
     """验证模型性能一致性"""
@@ -285,7 +286,7 @@ def verify_performance(model_name, data_path="data/AI4healthcare.xlsx"):
     try:
         model = TabularModel.load_model(f"results/{model_name}_fold1")
         # 使用与训练时相同的指标计算方式
-        auc, acc = calculate_metrics(y_true, preds['probability'], model)
+        auc, acc, loss = calculate_metrics(y_true, preds['probability'], model)
         if auc is None:
             print("❌ 性能验证失败：指标计算错误")
             return
@@ -294,21 +295,23 @@ def verify_performance(model_name, data_path="data/AI4healthcare.xlsx"):
         return
     
     # 加载历史最佳结果
-    summary_df = pd.read_csv("results/summary.csv")
-    hist_metrics = summary_df[summary_df['model_name']==model_name].iloc[0]
-    hist_auc = hist_metrics['best_auroc']
-    hist_acc = hist_metrics['accuracy_at_best_auroc']
+    with open('results/best_configs.json', 'r') as f:
+        historical_best = json.load(f)
+    hist_metrics = historical_best[model_name]['performance']
+    hist_loss = hist_metrics['loss']
+    hist_auc = hist_metrics['auc']
+    hist_acc = hist_metrics['accuracy']
     
     print(f"\n🔍 {model_name} 性能验证结果:")
+    print(f"当前 Loss: {loss:.4f} | 历史最佳 Loss: {hist_loss:.4f}")
     print(f"当前 AUC: {auc:.4f} | 历史最佳 AUC: {hist_auc:.4f}")
     print(f"当前 ACC: {acc:.4f} | 历史最佳 ACC: {hist_acc:.4f}")
     
     # 检查性能是否接近历史最佳
-    auc_diff = abs(auc - hist_auc)
-    acc_diff = abs(acc - hist_acc)
-    if auc_diff > 0.01:  # 允许1%的差异
-        print("\n⚠️ 警告: AUC与历史最佳相差较大!")
-        print(f"AUC差异: {auc_diff:.4f}")
+    loss_diff = abs(loss - hist_loss) if loss is not None else float('inf')
+    if loss_diff > 0.01:  # 允许1%的差异
+        print("\n⚠️ 警告: Loss与历史最佳相差较大!")
+        print(f"Loss差异: {loss_diff:.4f}")
         print("可能的原因:")
         print("1. 数据预处理不一致")
         print("2. 交叉验证划分不匹配")
@@ -316,7 +319,7 @@ def verify_performance(model_name, data_path="data/AI4healthcare.xlsx"):
         print("4. 特征顺序不一致")
         print("5. 指标计算方式不一致")
     else:
-        print("\n✅ 性能验证通过: AUC与历史最佳接近")
+        print("\n✅ 性能验证通过: Loss与历史最佳接近")
     
     # 保存详细的验证结果
     result_df = pd.DataFrame({
@@ -334,8 +337,10 @@ def verify_performance(model_name, data_path="data/AI4healthcare.xlsx"):
     # 添加验证信息
     result_df['model_name'] = model_name
     result_df['validation_time'] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+    result_df['historical_best_loss'] = hist_loss
     result_df['historical_best_auc'] = hist_auc
     result_df['historical_best_acc'] = hist_acc
+    result_df['current_loss'] = loss
     result_df['current_auc'] = auc
     result_df['current_acc'] = acc
     
@@ -352,7 +357,7 @@ def verify_performance(model_name, data_path="data/AI4healthcare.xlsx"):
             try:
                 # 加载对应fold的模型
                 fold_model = TabularModel.load_model(f"results/{model_name}_fold{fold}")
-                fold_auc, fold_acc = calculate_metrics(
+                fold_auc, fold_acc, fold_loss = calculate_metrics(
                     result_df.loc[fold_mask, 'true_label'],
                     result_df.loc[fold_mask, 'probability'],
                     fold_model
@@ -361,6 +366,7 @@ def verify_performance(model_name, data_path="data/AI4healthcare.xlsx"):
                     fold_metrics.append({
                         'fold': fold,
                         'samples': fold_mask.sum(),
+                        'loss': fold_loss,
                         'auc': fold_auc,
                         'acc': fold_acc
                     })
@@ -372,10 +378,10 @@ def verify_performance(model_name, data_path="data/AI4healthcare.xlsx"):
         print(fold_df)
         
         # 检查fold间的性能差异
-        auc_std = fold_df['auc'].std()
-        if auc_std > 0.05:  # 如果fold间AUC标准差超过0.05
+        loss_std = fold_df['loss'].std()
+        if loss_std > 0.05:  # 如果fold间loss标准差超过0.05
             print("\n⚠️ 警告: Fold间性能差异较大!")
-            print(f"AUC标准差: {auc_std:.4f}")
+            print(f"Loss标准差: {loss_std:.4f}")
     
     # 绘制预测分布
     plot_predictions(preds, result_df['fold_assignment'], save_path=f"results/{model_name}_prediction_distribution.png")

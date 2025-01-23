@@ -32,9 +32,44 @@ def set_seed(seed=42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+def cleanup_model_files(save_model_dir="save_model", max_trials_to_keep=5):
+    """清理模型文件，只保留最近的几次试验"""
+    if not os.path.exists(save_model_dir):
+        return
+    
+    # 获取所有试验目录
+    trial_dirs = []
+    for trial_dir in os.listdir(save_model_dir):
+        trial_path = os.path.join(save_model_dir, trial_dir)
+        if os.path.isdir(trial_path):
+            # 获取目录的修改时间
+            mtime = os.path.getmtime(trial_path)
+            trial_dirs.append((mtime, trial_path))
+    
+    # 按时间排序
+    trial_dirs.sort(reverse=True)
+    
+    # 删除旧的试验目录
+    if len(trial_dirs) > max_trials_to_keep:
+        for _, trial_path in trial_dirs[max_trials_to_keep:]:
+            import shutil
+            shutil.rmtree(trial_path)
+        print(f"✅ Cleaned up old trial models, keeping {max_trials_to_keep} most recent trials")
+
+def clean_save_model_dir(save_model_dir="save_model"):
+    """清空save_model目录"""
+    if os.path.exists(save_model_dir):
+        import shutil
+        shutil.rmtree(save_model_dir)
+        os.makedirs(save_model_dir)
+        print(f"✅ Cleaned up {save_model_dir} directory")
+
 def tune_selected_models(data_path):
     # Create results directory if it doesn't exist
     os.makedirs("results", exist_ok=True)
+    
+    # 清空save_model目录
+    clean_save_model_dir()
     
     # Set random seed
     set_seed(42)
@@ -67,7 +102,10 @@ def tune_selected_models(data_path):
         batch_size=1024,
         max_epochs=200,  # 增加训练轮数
         early_stopping="valid_loss",
-        early_stopping_patience=20  # 增加早停耐心值
+        early_stopping_patience=20,
+        checkpoints="valid_loss",  # 根据验证集loss选择最佳模型
+        checkpoints_path="save_model",
+        checkpoints_mode="min"  # loss越小越好
     )
 
     optimizer_config = OptimizerConfig(
@@ -290,6 +328,9 @@ def tune_selected_models(data_path):
         for fold, (train_idx, val_idx) in enumerate(kfold.split(X, y), 1):
             print(f"\n--- Fold {fold}/10 ---")
             
+            # 每个fold开始前清空save_model目录
+            clean_save_model_dir()
+            
             # 准备当前fold的数据
             X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
             y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
@@ -315,8 +356,8 @@ def tune_selected_models(data_path):
                 search_space=search_space,
                 strategy="random_search",
                 n_trials=300,  # 增加到300次尝试
-                metric="auroc",
-                mode="max",
+                metric="loss",
+                mode="min",
                 progress_bar=True,
                 verbose=True,
                 return_best_model=True
@@ -327,18 +368,26 @@ def tune_selected_models(data_path):
             tuner_df.trials_df['model'] = model_name
             fold_results.append(tuner_df.trials_df)
             
+            # 保存最佳模型后清理save_model目录
             if tuner_df.best_model is not None:
                 fold_models.append(tuner_df.best_model)
-                # 保存fold模型
+                # 保存fold模型前，清理旧的模型文件
                 model_save_path = f"results/{model_name}_fold{fold}"
+                if os.path.exists(model_save_path):
+                    import shutil
+                    shutil.rmtree(model_save_path)
+                # 保存新的最佳模型
                 tuner_df.best_model.save_model(model_save_path)
                 print(f"✅ Saved fold {fold} model to {model_save_path}")
+                # 清理save_model目录
+                clean_save_model_dir()
             
             # 获取当前fold的最佳结果
-            best_trial = tuner_df.trials_df.sort_values("auroc", ascending=False).iloc[0]
+            best_trial = tuner_df.trials_df.sort_values("loss", ascending=True).iloc[0]
             best_auc = best_trial["auroc"]
             best_acc = best_trial.get("accuracy", None)
-            
+            best_loss = best_trial.get("loss", None)
+
             print(f"\nFold {fold} Results:")
             print(f"AUC: {best_auc:.4f}")
             if best_acc is not None:
@@ -349,21 +398,40 @@ def tune_selected_models(data_path):
         all_fold_results.append(model_results)
         
         # 计算交叉验证平均性能
-        mean_auc = model_results.groupby('fold')['auroc'].max().mean()
-        std_auc = model_results.groupby('fold')['auroc'].max().std()
-        mean_acc = model_results.groupby('fold')['accuracy'].max().mean() if 'accuracy' in model_results.columns else None
-        std_acc = model_results.groupby('fold')['accuracy'].max().std() if 'accuracy' in model_results.columns else None
+        fold_best_metrics = []
+        for fold_num in model_results['fold'].unique():
+            fold_data = model_results[model_results['fold'] == fold_num]
+            # 找到loss最低的trial
+            best_trial = fold_data.loc[fold_data['loss'].idxmin()]
+            fold_best_metrics.append({
+                'fold': fold_num,
+                'auc': best_trial['auroc'],
+                'accuracy': best_trial['accuracy'],
+                'loss': best_trial['loss']
+            })
+        
+        # 计算平均性能
+        fold_metrics_df = pd.DataFrame(fold_best_metrics)
+        mean_auc = fold_metrics_df['auc'].mean()
+        std_auc = fold_metrics_df['auc'].std()
+        mean_acc = fold_metrics_df['accuracy'].mean()
+        std_acc = fold_metrics_df['accuracy'].std()
+        mean_loss = fold_metrics_df['loss'].mean()
+        std_loss = fold_metrics_df['loss'].std()
         
         print(f"\n{model_name} Cross-Validation Results:")
+        print(f"Mean Loss: {mean_loss:.4f} ± {std_loss:.4f}")
         print(f"Mean AUC: {mean_auc:.4f} ± {std_auc:.4f}")
-        if mean_acc is not None:
-            print(f"Mean Accuracy: {mean_acc:.4f} ± {std_acc:.4f}")
+        print(f"Mean Accuracy: {mean_acc:.4f} ± {std_acc:.4f}")
         
         # 更新历史最佳配置
-        if model_name not in historical_best or mean_auc > historical_best[model_name]['performance']['auc']:
+        if model_name not in historical_best or mean_loss < historical_best[model_name]['performance'].get('loss', float('inf')):
             # 获取最佳fold的配置
-            best_fold_idx = model_results.groupby('fold')['auroc'].max().idxmax()
-            best_trial = model_results[model_results['fold'] == best_fold_idx].sort_values("auroc", ascending=False).iloc[0]
+            best_fold_idx = fold_metrics_df.loc[fold_metrics_df['loss'].idxmin(), 'fold']
+            best_trial = model_results[
+                (model_results['fold'] == best_fold_idx) & 
+                (model_results['loss'] == fold_metrics_df['loss'].min())
+            ].iloc[0]
             
             params_dict = {}
             for col in best_trial.index:
@@ -381,14 +449,19 @@ def tune_selected_models(data_path):
             historical_best[model_name] = {
                 'params': params_dict,
                 'performance': {
+                    'loss': float(mean_loss),
+                    'loss_std': float(std_loss),
                     'auc': float(mean_auc),
                     'auc_std': float(std_auc),
-                    'accuracy': float(mean_acc) if mean_acc is not None else 0.0,
-                    'accuracy_std': float(std_acc) if std_acc is not None else 0.0,
+                    'accuracy': float(mean_acc),
+                    'accuracy_std': float(std_acc),
                     'timestamp': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
                 }
             }
             print(f"\n🏆 New best configuration found for {model_name}!")
+            print(f"Loss: {mean_loss:.4f} ± {std_loss:.4f}")
+            print(f"AUC: {mean_auc:.4f} ± {std_auc:.4f}")
+            print(f"Accuracy: {mean_acc:.4f} ± {std_acc:.4f}")
         
         # 保存最佳模型集成
         best_models[model_name] = fold_models
@@ -398,8 +471,8 @@ def tune_selected_models(data_path):
             "model_name": model_name,
             "mean_auroc": mean_auc,
             "std_auroc": std_auc,
-            "mean_accuracy": mean_acc if mean_acc is not None else 0.0,
-            "std_accuracy": std_acc if std_acc is not None else 0.0,
+            "mean_accuracy": mean_acc,
+            "std_accuracy": std_acc,
             "historical_best_auroc": historical_best[model_name]['performance']['auc'],
             "historical_best_accuracy": historical_best[model_name]['performance']['accuracy'],
             "historical_best_timestamp": historical_best[model_name]['performance'].get('timestamp', 'N/A')

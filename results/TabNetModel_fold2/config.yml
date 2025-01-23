@@ -100,17 +100,17 @@ metrics_params:
 - {}
 - {}
 target_range: null
-virtual_batch_size: 128
+virtual_batch_size: 512
 seed: 42
 _module_src: models.tabnet
 _model_name: TabNetModel
 _backbone_name: TabNetBackbone
 _config_name: TabNetModelConfig
-n_d: 32
-n_a: 32
-n_steps: 10
-gamma: 1.0
-n_independent: 1
+n_d: 64
+n_a: 8
+n_steps: 7
+gamma: 1.5
+n_independent: 3
 n_shared: 3
 mask_type: entmax
 grouped_features: null
@@ -137,7 +137,7 @@ early_stopping_mode: min
 early_stopping_patience: 20
 early_stopping_kwargs: {}
 checkpoints: valid_loss
-checkpoints_path: saved_models
+checkpoints_path: save_model
 checkpoints_every_n_epochs: 1
 checkpoints_name: null
 checkpoints_mode: min
@@ -151,12 +151,11 @@ trainer_kwargs:
   enable_model_summary: false
 optimizer: AdamW
 optimizer_params:
-  weight_decay: 0.01
+  weight_decay: 0.001
 lr_scheduler: ReduceLROnPlateau
 lr_scheduler_params:
   mode: min
   patience: 5
   factor: 0.1
 lr_scheduler_monitor_metric: valid_loss
-categorical_dim: 0
 enable_checkpointing: true

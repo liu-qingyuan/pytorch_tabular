@@ -107,11 +107,11 @@ _model_name: DANetModel
 _backbone_name: DANetBackbone
 _config_name: DANetConfig
 n_layers: 8
-abstlay_dim_1: 16
-abstlay_dim_2: 32
-k: 7
+abstlay_dim_1: 64
+abstlay_dim_2: 64
+k: 3
 dropout_rate: 0.1
-block_activation: GELU
+block_activation: LeakyReLU
 batch_size: 1024
 data_aware_init_batch_size: 2000
 fast_dev_run: false
@@ -135,7 +135,7 @@ early_stopping_mode: min
 early_stopping_patience: 20
 early_stopping_kwargs: {}
 checkpoints: valid_loss
-checkpoints_path: saved_models
+checkpoints_path: save_model
 checkpoints_every_n_epochs: 1
 checkpoints_name: null
 checkpoints_mode: min
@@ -147,7 +147,7 @@ progress_bar: none
 precision: '32'
 trainer_kwargs:
   enable_model_summary: false
-optimizer: Adam
+optimizer: AdamW
 optimizer_params:
   weight_decay: 0.01
 lr_scheduler: ReduceLROnPlateau
@@ -156,4 +156,5 @@ lr_scheduler_params:
   patience: 5
   factor: 0.1
 lr_scheduler_monitor_metric: valid_loss
+categorical_dim: 0
 enable_checkpointing: true

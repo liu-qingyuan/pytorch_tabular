@@ -147,7 +147,7 @@ early_stopping_mode: min
 early_stopping_patience: 20
 early_stopping_kwargs: {}
 checkpoints: valid_loss
-checkpoints_path: saved_models
+checkpoints_path: save_model
 checkpoints_every_n_epochs: 1
 checkpoints_name: null
 checkpoints_mode: min
