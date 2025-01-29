@@ -100,17 +100,17 @@ metrics_params:
 - {}
 - {}
 target_range: null
-virtual_batch_size: 512
+virtual_batch_size: 256
 seed: 42
 _module_src: models.danet
 _model_name: DANetModel
 _backbone_name: DANetBackbone
 _config_name: DANetConfig
-n_layers: 8
+n_layers: 6
 abstlay_dim_1: 16
-abstlay_dim_2: 32
-k: 7
-dropout_rate: 0.1
+abstlay_dim_2: 128
+k: 3
+dropout_rate: 0.2
 block_activation: GELU
 batch_size: 1024
 data_aware_init_batch_size: 2000
@@ -147,7 +147,7 @@ progress_bar: none
 precision: '32'
 trainer_kwargs:
   enable_model_summary: false
-optimizer: Adam
+optimizer: AdamW
 optimizer_params:
   weight_decay: 0.01
 lr_scheduler: ReduceLROnPlateau

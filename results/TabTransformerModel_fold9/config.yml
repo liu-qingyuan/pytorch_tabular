@@ -86,7 +86,7 @@ head_config:
   use_batch_norm: true
   initialization: kaiming
 embedding_dims: null
-embedding_dropout: 0.1
+embedding_dropout: 0.2
 batch_norm_continuous_input: true
 learning_rate: 0.001
 loss: CrossEntropyLoss
@@ -106,20 +106,20 @@ _module_src: models.tab_transformer
 _model_name: TabTransformerModel
 _backbone_name: TabTransformerBackbone
 _config_name: TabTransformerConfig
-input_embed_dim: 32
+input_embed_dim: 64
 embedding_initialization: kaiming_uniform
 embedding_bias: true
-share_embedding: false
-share_embedding_strategy: add
-shared_embedding_fraction: 0.25
-num_heads: 8
+share_embedding: true
+share_embedding_strategy: fraction
+shared_embedding_fraction: 0.75
+num_heads: 4
 num_attn_blocks: 6
-transformer_head_dim: null
-attn_dropout: 0.2
+transformer_head_dim: 32
+attn_dropout: 0.1
 add_norm_dropout: 0.1
 ff_dropout: 0.1
-ff_hidden_multiplier: 2
-transformer_activation: GEGLU
+ff_hidden_multiplier: 4
+transformer_activation: SwiGLU
 batch_size: 1024
 data_aware_init_batch_size: 2000
 fast_dev_run: false
@@ -155,9 +155,9 @@ progress_bar: none
 precision: '32'
 trainer_kwargs:
   enable_model_summary: false
-optimizer: AdamW
+optimizer: Adam
 optimizer_params:
-  weight_decay: 0.01
+  weight_decay: 0.001
 lr_scheduler: ReduceLROnPlateau
 lr_scheduler_params:
   mode: min

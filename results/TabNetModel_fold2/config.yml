@@ -100,19 +100,19 @@ metrics_params:
 - {}
 - {}
 target_range: null
-virtual_batch_size: 512
+virtual_batch_size: 256
 seed: 42
 _module_src: models.tabnet
 _model_name: TabNetModel
 _backbone_name: TabNetBackbone
 _config_name: TabNetModelConfig
-n_d: 64
+n_d: 16
 n_a: 8
 n_steps: 7
-gamma: 1.5
-n_independent: 3
+gamma: 1.3
+n_independent: 2
 n_shared: 3
-mask_type: entmax
+mask_type: sparsemax
 grouped_features: null
 batch_size: 1024
 data_aware_init_batch_size: 2000
@@ -149,7 +149,7 @@ progress_bar: none
 precision: '32'
 trainer_kwargs:
   enable_model_summary: false
-optimizer: AdamW
+optimizer: Adam
 optimizer_params:
   weight_decay: 0.001
 lr_scheduler: ReduceLROnPlateau

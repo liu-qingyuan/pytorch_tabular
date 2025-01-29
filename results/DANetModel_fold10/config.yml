@@ -108,10 +108,10 @@ _backbone_name: DANetBackbone
 _config_name: DANetConfig
 n_layers: 8
 abstlay_dim_1: 16
-abstlay_dim_2: 32
+abstlay_dim_2: 128
 k: 7
 dropout_rate: 0.1
-block_activation: GELU
+block_activation: LeakyReLU
 batch_size: 1024
 data_aware_init_batch_size: 2000
 fast_dev_run: false
@@ -149,7 +149,7 @@ trainer_kwargs:
   enable_model_summary: false
 optimizer: Adam
 optimizer_params:
-  weight_decay: 0.01
+  weight_decay: 0.001
 lr_scheduler: ReduceLROnPlateau
 lr_scheduler_params:
   mode: min
